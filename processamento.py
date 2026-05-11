@@ -16,15 +16,12 @@ CHS, DS, IST = 36, 7, 1.15
 def get_engine():
     try:
         if "DATABASE_URL" in st.secrets:
-            db_url = st.secrets["DATABASE_URL"]
-            # Ajuste para compatibilidade com versões novas do SQLAlchemy
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://", 1)
-            
-            # Criamos o engine com pool_pre_ping para evitar conexões mortas
-            return create_engine(db_url, pool_pre_ping=True)
-    except Exception as e:
-        st.error(f"Erro de Conexão: {e}")
+            url = st.secrets["DATABASE_URL"]
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql://", 1)
+            return create_engine(url, pool_pre_ping=True)
+    except:
+        pass
     return create_engine("sqlite:///banco_local.db")
 
 engine = get_engine()
@@ -66,20 +63,15 @@ def processar_planilha_e_salvar(file_obj, unidade, mes_ano):
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     res_cols = ['THE', 'QP_Calculado', 'QP_Total_Mes', 'Prevalencia', 'QP_Enf_Mes', 'QP_Tec_Mes', 'Ratio_Ref', 'Perc_Enf', 'Perc_Tec', 'Censo_Real']
     df[res_cols] = df.apply(calcular_dimensionamento, axis=1)
-    
-    # O 'if_exists='append'' cria a tabela automaticamente se ela não existir
     df.to_sql('escalas', engine, if_exists='append', index=False)
 
 def carregar_dados_banco():
-    try:
-        return pd.read_sql('SELECT * FROM escalas', engine)
-    except:
-        return pd.DataFrame()
+    try: return pd.read_sql('SELECT * FROM escalas', engine)
+    except: return pd.DataFrame()
 
 def limpar_banco():
     try:
         with engine.begin() as conn:
             conn.execute(text("DROP TABLE IF EXISTS escalas"))
         return True
-    except:
-        return False
+    except: return False
