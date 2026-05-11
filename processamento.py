@@ -14,17 +14,25 @@ CHS, DS, IST = 36, 7, 1.15
 
 @st.cache_resource
 def get_engine():
-    try:
-        if "DATABASE_URL" in st.secrets:
+    if "DATABASE_URL" in st.secrets:
+        try:
             db_url = st.secrets["DATABASE_URL"]
-            # Ajuste para compatibilidade com versões novas do SQLAlchemy
             if db_url.startswith("postgres://"):
                 db_url = db_url.replace("postgres://", "postgresql://", 1)
             
-            # Criamos o engine com pool_pre_ping para evitar conexões mortas
-            return create_engine(db_url, pool_pre_ping=True)
-    except Exception as e:
-        st.error(f"Erro de Conexão: {e}")
+            engine = create_engine(db_url, pool_pre_ping=True)
+            
+            # Força o teste de conexão agora para capturar o erro real
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return engine
+            
+        except Exception as e:
+            # Mostra o erro sem a censura do Streamlit
+            st.error("🚨 Falha na conexão com o Supabase. O banco local (temporário) será ativado.")
+            st.error(f"Motivo técnico: {e}")
+            return create_engine("sqlite:///banco_local.db")
+            
     return create_engine("sqlite:///banco_local.db")
 
 engine = get_engine()
@@ -67,8 +75,12 @@ def processar_planilha_e_salvar(file_obj, unidade, mes_ano):
     res_cols = ['THE', 'QP_Calculado', 'QP_Total_Mes', 'Prevalencia', 'QP_Enf_Mes', 'QP_Tec_Mes', 'Ratio_Ref', 'Perc_Enf', 'Perc_Tec', 'Censo_Real']
     df[res_cols] = df.apply(calcular_dimensionamento, axis=1)
     
-    # O 'if_exists='append'' cria a tabela automaticamente se ela não existir
-    df.to_sql('escalas', engine, if_exists='append', index=False)
+    try:
+        # Tenta salvar
+        df.to_sql('escalas', engine, if_exists='append', index=False)
+    except Exception as e:
+        # Se der erro aqui, captura e não crasha a interface
+        st.error(f"Erro ao salvar os dados na tabela 'escalas': {e}")
 
 def carregar_dados_banco():
     try:
